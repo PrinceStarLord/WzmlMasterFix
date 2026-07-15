@@ -412,7 +412,8 @@ help_string = [
 
 <b>Extras:</b>
 ┠ /{BotCommands.SpeedCommand[0]} or /{BotCommands.SpeedCommand[1]}: Check Speed in VPS/Server.
-┖ /{BotCommands.MediaInfoCommand[0]} or /{BotCommands.MediaInfoCommand[1]} [url/media]: Generate MediaInfo of Media or DL Urls
+┠ /{BotCommands.MediaInfoCommand[0]} or /{BotCommands.MediaInfoCommand[1]} [url/media]: Generate MediaInfo of Media or DL Urls
+┖ /{BotCommands.BypassCommand[0]} or /{BotCommands.BypassCommand[1]} [url]: Bypass HubCloud link to get direct download links
 
 <b>Torrent/Drive Search:</b>
 ┠ /{BotCommands.ListCommand} [query]: Search in Google Drive(s).
