@@ -6,12 +6,12 @@ from bs4 import BeautifulSoup
 
 from pyrogram.handlers import MessageHandler
 from pyrogram.filters import command
+from pyrogram.enums import MessageEntityType
 
 from bot import LOGGER, bot
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.message_utils import editMessage, sendMessage
-from bot.helper.ext_utils.bot_utils import is_url
 
 DIRECT_URL_RE = re.compile(
     r"https://video-downloads\.googleusercontent\.com/[^\s'\"]+", re.I
@@ -19,6 +19,24 @@ DIRECT_URL_RE = re.compile(
 
 SKIP_TEXTS = {"login", "vpn", "idm", "ida"}
 BRACKET_NAME_RE = re.compile(r"\[(.*?)\]")
+URL_RE = re.compile(r"https?://\S+")
+MSG_LIMIT = 3800
+
+
+def extract_urls(text, entities=None):
+    urls = []
+    for entity in entities or []:
+        if entity.type == MessageEntityType.TEXT_LINK and entity.url:
+            urls.append(entity.url)
+    if text:
+        urls.extend(u.rstrip(").,]>\"'") for u in URL_RE.findall(text))
+    seen = set()
+    ordered = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            ordered.append(u)
+    return ordered
 
 
 async def _resolve(session, url):
@@ -89,43 +107,68 @@ async def extract_hubcloud_links(url):
             raise RuntimeError(f"Failed after 3 attempts: {e}")
 
 
+def format_block(title, size, links):
+    block = "┌ 📁 <b>File Name :-</b> "
+    block += f"<code>{title}</code>\n" if title else "\n"
+    block += "│\n"
+    block += "├ 📂 <b>File Size :-</b> "
+    block += f"{size}\n" if size else "\n"
+    block += "│\n"
+    block += "└ 🔗 <b>Links :-</b> "
+    block += " | ".join(f'<a href="{href}">{name}</a>' for name, href in links)
+    return block
+
+
+async def process_link(url):
+    try:
+        title, size, links = await extract_hubcloud_links(url)
+        return format_block(title, size, links)
+    except Exception as e:
+        LOGGER.error(f"{url}: {e}")
+        return f"❌ <b>Bypass Failed :-</b> <code>{url}</code>\n<i>{e}</i>"
+
+
 async def bypass_link(_, message):
     help_msg = (
         "<b>By replying to a HubCloud link:</b>"
         f"\n<code>/{BotCommands.BypassCommand[0]} or /{BotCommands.BypassCommand[1]}</code>"
         "\n\n<b>By sending a HubCloud link:</b>"
         f"\n<code>/{BotCommands.BypassCommand[0]} or /{BotCommands.BypassCommand[1]}"
-        + " {link}"
+        + " {link} [link2] [link3] ..."
         + "</code>"
     )
 
     rply = message.reply_to_message
-    link = None
+    urls = []
     if len(message.command) > 1:
-        link = message.command[1].strip()
+        cmd_text = message.text.split(None, 1)[1]
+        urls = extract_urls(cmd_text)
     elif rply and rply.text:
-        link = rply.text.split("\n", 1)[0].strip()
+        urls = extract_urls(rply.text, rply.entities)
 
-    if not link or not is_url(link):
+    if not urls:
         return await sendMessage(message, help_msg)
 
-    temp_send = await sendMessage(message, "<i>Bypassing link, please wait...</i>")
-    try:
-        title, size, links = await extract_hubcloud_links(link)
-    except Exception as e:
-        LOGGER.error(str(e))
-        return await editMessage(temp_send, f"<b>Bypass Failed:</b> <i>{e}</i>")
+    temp_send = await sendMessage(
+        message, f"<i>Bypassing {len(urls)} link(s), please wait...</i>"
+    )
+    blocks = await asyncio.gather(*(process_link(u) for u in urls))
 
-    msg = "┌ 📁 <b>File Name :-</b> "
-    msg += f"<code>{title}</code>\n" if title else "\n"
-    msg += "│\n"
-    msg += "├ 📂 <b>File Size :-</b> "
-    msg += f"{size}\n" if size else "\n"
-    msg += "│\n"
-    msg += "└ 🔗 <b>Links :-</b> "
-    msg += " | ".join(f'<a href="{href}">{name}</a>' for name, href in links)
+    chunks = []
+    current = ""
+    for block in blocks:
+        candidate = f"{current}\n\n{block}" if current else block
+        if len(candidate) > MSG_LIMIT and current:
+            chunks.append(current)
+            current = block
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
 
-    await editMessage(temp_send, msg.strip())
+    await editMessage(temp_send, chunks[0])
+    for chunk in chunks[1:]:
+        await sendMessage(message, chunk)
 
 
 bot.add_handler(
