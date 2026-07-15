@@ -18,6 +18,7 @@ DIRECT_URL_RE = re.compile(
 )
 
 SKIP_TEXTS = {"login", "vpn", "idm", "ida"}
+BRACKET_NAME_RE = re.compile(r"\[(.*?)\]")
 
 
 async def _resolve(session, url):
@@ -55,22 +56,32 @@ async def extract_hubcloud_links(url):
                 html2 = await _fetch(session, second_url)
                 soup2 = BeautifulSoup(html2, "lxml")
 
+                title_tag = soup2.find("div", {"class": "card-header"})
+                title = title_tag.get_text(strip=True) if title_tag else None
+
+                size_tag = soup2.find("i", {"id": "size"})
+                size = size_tag.get_text(strip=True) if size_tag else None
+
                 links = []
                 for a in soup2.find_all("a", href=True):
                     href = a["href"].strip(" ").replace(" ", "%20")
-                    name = a.get_text(strip=True)
+                    text = a.get_text(strip=True)
                     if not href.startswith("http"):
                         continue
-                    if name.lower() in SKIP_TEXTS or "download" not in name.lower():
+                    if text.lower() in SKIP_TEXTS or "download" not in text.lower():
                         continue
                     if "?id=" in href:
                         href = await _resolve(session, href)
+                    if bmatch := BRACKET_NAME_RE.search(text):
+                        name = bmatch.group(1)
+                    else:
+                        name = re.sub(r"(?i)download", "", text).strip(" :-")
                     links.append((name, href))
 
                 if not links:
                     raise Exception("No valid download links found")
 
-                return links
+                return title, size, links
         except Exception as e:
             if attempt < 2:
                 await asyncio.sleep(1)
@@ -100,14 +111,19 @@ async def bypass_link(_, message):
 
     temp_send = await sendMessage(message, "<i>Bypassing link, please wait...</i>")
     try:
-        links = await extract_hubcloud_links(link)
+        title, size, links = await extract_hubcloud_links(link)
     except Exception as e:
         LOGGER.error(str(e))
         return await editMessage(temp_send, f"<b>Bypass Failed:</b> <i>{e}</i>")
 
-    msg = "<b>✅ Bypassed Links:</b>\n\n"
-    for name, href in links:
-        msg += f"➲ <b>{name}:</b>\n{href}\n\n"
+    msg = "┌ 📁 <b>File Name :-</b> "
+    msg += f"<code>{title}</code>\n" if title else "\n"
+    msg += "│\n"
+    msg += "├ 📂 <b>File Size :-</b> "
+    msg += f"{size}\n" if size else "\n"
+    msg += "│\n"
+    msg += "└ 🔗 <b>Links :-</b> "
+    msg += " | ".join(f'<a href="{href}">{name}</a>' for name, href in links)
 
     await editMessage(temp_send, msg.strip())
 
