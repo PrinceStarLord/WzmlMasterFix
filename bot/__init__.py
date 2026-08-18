@@ -637,6 +637,10 @@ if len(MDL_TEMPLATE) == 0:
 
 <a href='{url}'>Read More ...</a>"""
 
+
+BYPASS_API = environ.get('BYPASS_API', '')
+BYPASS_API_KEY = environ.get('BYPASS_API_KEY', '')
+
 config_dict = {
     "ANIME_TEMPLATE": ANIME_TEMPLATE,
     "AS_DOCUMENT": AS_DOCUMENT,
@@ -750,6 +754,8 @@ config_dict = {
     "USE_SERVICE_ACCOUNTS": USE_SERVICE_ACCOUNTS,
     "WEB_PINCODE": WEB_PINCODE,
     "YT_DLP_OPTIONS": YT_DLP_OPTIONS,
+    "BYPASS_API": BYPASS_API,
+    "BYPASS_API_KEY": BYPASS_API_KEY,
 }
 
 if GDRIVE_ID:

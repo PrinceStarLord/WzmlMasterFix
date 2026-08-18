@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-from threading import Thread
+from threading import Thread, Lock
 from base64 import b64decode
 from json import loads
 from os import path
 from uuid import uuid4
 from hashlib import sha256
 from time import sleep
-from re import findall, match, search
+from re import findall, match, search, compile as re_compile
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from lxml.etree import HTML
-from requests import Session, session as req_session, post
-from urllib.parse import parse_qs, quote, unquote, urlparse, urljoin
+from requests import Session, session as req_session, post, get
+from urllib.parse import parse_qs, quote, unquote, urlparse, urljoin, quote_plus, unquote_plus
 from cloudscraper import create_scraper
 from lk21 import Bypass
 from http.cookiejar import MozillaCookieJar
@@ -27,7 +27,11 @@ from bot.helper.ext_utils.bot_utils import (
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.ext_utils.help_messages import PASSWORD_ERROR_MESSAGE
 
+api_key = config_dict.get('BYPASS_API_KEY')
+
+headers_auth = {'Authorization': f"Bearer {api_key}"}
 _caches = {}
+_bypass_api_lock = Lock()
 user_agent = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0"
 )
@@ -629,6 +633,8 @@ def direct_link_generator(link):
         return streamvid(link)
     elif "instagram.com" in domain:
         return instagram(link)
+    elif any(x in domain for x in ["gdflix", "gdlink", "ziddiflix", "vifix", "hubcloud", "hubdrive", "hubcdn", "driveseed", "driveleech", "neodrive", "neolink", "extralink", "dotflix", "vikingfile", "vikingf1le", "vik1ngfile", "filepress", "skymovies", "drivehub"]) or "gd.vifix.site" in link:
+        return best_direct_link(link)
     elif any(
         x in domain
         for x in [
@@ -706,6 +712,42 @@ def direct_link_generator(link):
     else:
         raise DirectDownloadLinkException(f"No Direct link function found for {link}")
 
+
+def best_direct_link(url: str):
+    api_base = config_dict.get('BYPASS_API')
+    if not api_base:
+        raise DirectDownloadLinkException('ERROR: BYPASS_API not configured')
+    elif not api_key:
+        raise DirectDownloadLinkException('ERROR: BYPASS_API_KEY not configured')
+
+    
+    bypass_regex = re_compile(r'https?://(?:[^/]*\.)?(filepress|extralink|oxxfile|dotflix|gdflix|gdlink|hubcloud|hubdrive|driveseed|driveleech|gdshare|gcloud|gdrex|neodrive|neolink|drivehub|ziddiflix|vifix|ozolinks|skymovies)\.(?:[^/]+)(?:/|$)|https?://(?:[^/]*\.)?(vikingfile|vikingf1le|vik1ngfile)\.(?:[^/]+)/f/|https?://gd\.vifix\.site')
+
+    api_url = f'{api_base}/bypass?url={quote_plus(url)}&dl=True'
+    
+    with _bypass_api_lock:
+        try:
+            resp = get(api_url, headers=headers_auth, allow_redirects=False, timeout=240)
+        except Exception:
+            raise DirectDownloadLinkException('ERROR: Failed to generate direct link. Connection timeout!')
+
+    if not resp.headers.get('Location'):
+        if resp.json().get('error'):
+            raise DirectDownloadLinkException(f"ERROR: {resp.json().get('error')}")
+        raise DirectDownloadLinkException(f'No Bypass found for {url}')
+
+    link = resp.headers.get('Location')
+
+    if bypass_regex.search(link):
+        LOGGER.info(f"[BYPASS] {url} -> {link} (recursing)")
+        return best_direct_link(link)
+
+    if 'gofile' in link:
+        return gofile(link, None, False)
+    if 'pixeldrain' in link:
+        return pixeldrain(url)
+
+    return link
 
 def real_debrid(url: str, tor=False):
     """Real-Debrid Link Extractor (VPN Maybe Needed)

@@ -611,6 +611,10 @@ async def load_config():
 
 <a href='{url}'>Read More ...</a>"""
 
+
+    BYPASS_API = environ.get('BYPASS_API', '')
+    BYPASS_API_KEY = environ.get('BYPASS_API_KEY', '')
+
     TIMEZONE = environ.get("TIMEZONE", "")
     if len(TIMEZONE) == 0:
         TIMEZONE = "Asia/Kolkata"
@@ -779,6 +783,8 @@ async def load_config():
             "USE_SERVICE_ACCOUNTS": USE_SERVICE_ACCOUNTS,
             "WEB_PINCODE": WEB_PINCODE,
             "YT_DLP_OPTIONS": YT_DLP_OPTIONS,
+            "BYPASS_API": BYPASS_API,
+            "BYPASS_API_KEY": BYPASS_API_KEY,
         }
     )
 
