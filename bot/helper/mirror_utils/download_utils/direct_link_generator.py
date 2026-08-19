@@ -5,7 +5,7 @@ from json import loads
 from os import path
 from uuid import uuid4
 from hashlib import sha256
-from time import sleep
+from time import sleep, time
 from re import findall, match, search, compile as re_compile
 
 from requests.adapters import HTTPAdapter
@@ -626,7 +626,7 @@ def direct_link_generator(link):
     elif "letsupload.io" in domain:
         return letsupload(link)
     elif "gofile.io" in domain:
-        return gofile(link, auth)
+        return gofile(link)
     elif "easyupload.io" in domain:
         return easyupload(link)
     elif "streamvid.net" in domain:
@@ -743,7 +743,7 @@ def best_direct_link(url: str):
         return best_direct_link(link)
 
     if 'gofile' in link:
-        return gofile(link, None, False)
+        return gofile(link)
     if 'pixeldrain' in link:
         return pixeldrain(url)
 
@@ -1294,9 +1294,14 @@ def terabox(url):
     return details
 
 
-def gofile(url, auth):
+def gofile(url):
     try:
-        _password = sha256(auth[1].encode("utf-8")).hexdigest() if auth else ""
+        if "::" in url:
+            _password = url.split("::")[-1]
+            _password = sha256(_password.encode("utf-8")).hexdigest()
+            url = url.split("::")[-2]
+        else:
+            _password = ""
         _id = url.split("/")[-1]
     except Exception as e:
         raise DirectDownloadLinkException(f"ERROR: {e.__class__.__name__}")
@@ -1318,13 +1323,18 @@ def gofile(url, auth):
             raise e
 
     def __fetch_links(session, _id, folderPath=""):
-        _url = f"https://api.gofile.io/contents/{_id}?wt=4fd6sg89d7s6&cache=true"
+        _url = f"https://api.gofile.io/contents/{_id}?cache=true"
+        time_slot = int(time()) // 14400
+        raw = f"{user_agent}::en-US::{token}::{time_slot}::12af056dacea0b"
+        wt = sha256(raw.encode()).hexdigest()
         headers = {
             "User-Agent": user_agent,
             "Accept-Encoding": "gzip, deflate, br",
             "Accept": "*/*",
             "Connection": "keep-alive",
             "Authorization": "Bearer" + " " + token,
+            "X-Website-Token": wt,
+            "X-BL": "en-US",
         }
         if _password:
             _url += f"&password={_password}"
